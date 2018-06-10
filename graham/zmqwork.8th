@@ -1,4 +1,4 @@
-\ 8th version of taskwork.r2
+\ 8th version of taskwork.r2, using 18.04 of 8th.
 \ Graham on 10-June-2018
 
 needs net/zmq   \ should check using zmq:zmq . to see if the library loads
