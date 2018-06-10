@@ -5,10 +5,13 @@ Rebol [
 		- start the work first eg. view -s taskwork.r2
 		- then start this script eg. view -s taskventsink.r2
 
-		This script then generates 10 random numbers as strings, and sends to 0MQ.
+		This script then generates 100 random numbers as strings, and sends to 0MQ.
 		The worker picks these up from 0MQ and squares the numbers, and sends it back to 0MQ
 		This script then checks for a result.
-		After 10 results it halts
+		After 100 results it halts
+
+		It assumes that jobs are returned in the same sequence they are sent but that may not be true if there are more 
+		than one client.  It does test to see if the result returned is correct.
 	}
 	date: 7-June-2018
 ]
@@ -25,7 +28,7 @@ sender: zmq-socket ctx zmq_push
 ; since is going to serve jobs for workers to pull from it will be a server
 zmq-bind sender "tcp://*:5557"
 
-; the socket the workers connect to to send results
+; the socket the workers connect to send results
 receiver: zmq-socket ctx zmq_pull ;zmq-constants/pull
 zmq-bind receiver "tcp://*:5558"
 
@@ -36,7 +39,8 @@ ask "Press Enter when the workers are ready."
 random/seed now/precise
 
 tasks: copy []
-n: 10
+results: copy []
+n: 100
 loop n [append tasks form random 100]
 
 
@@ -50,10 +54,15 @@ forever [
 	if not tail? tasks [
 		res: z-send-msg sender msg: take tasks
 		print ["Sent: " msg]
+		append results msg
 		?? res
 	]
 	if string: z-recv-msg/dont-wait receiver [
-		print string
+		string: to integer! string
+		print ["square of " msg: to integer! take results " is: " string]
+		if string <> (msg * msg) [
+			print "Result received out of sequence"
+		]
 		if zero? -- n [break]
 	]
 	?? n
@@ -63,3 +72,5 @@ forever [
 zmq-close sender
 zmq-close receiver
 zmq-ctx-term ctx
+; so we can see the console
+halt 
