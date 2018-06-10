@@ -1,0 +1,79 @@
+\ 8th version of taskwork.r2
+\ Graham on 10-June-2018
+
+needs net/zmq   \ should check using zmq:zmq . to see if the library loads
+
+\ Test code:
+var ctx
+var pull
+var push
+
+: init
+  "initializing\n" .
+  zmq:ctx-new  ctx !
+  ctx @ zmq:PULL zmq:socket pull !
+  "connecting to vent ...\n" .       
+  pull @ "tcp://localhost:5557" zmq:connect not if then
+
+  ctx @ zmq:PUSH zmq:socket push !
+  "connecting to sink ...\n" .       
+  push @ "tcp://localhost:5558" zmq:connect not if then 
+;
+
+: deinit
+ pull @ zmq:close drop
+ push @ zmq:close drop
+ ctx @ zmq:ctx-destroy ;
+
+
+\ no testing, just converts ascii to 48 => 0, and leaves on TOS
+: 'emit \ s: ascii -- n
+  48 -
+;
+
+\ buffer containing ascii is converted to a number
+: b>number  \ b -- n
+  0 >r            \ put accumulator on r stack
+  (               \ ix ascii
+    'emit         \ ix n
+    r>            \ ix n total
+    10 n:* n:+
+    >r            \ ix r: total
+    drop
+  ) b:each drop
+  r> 
+;
+
+\ takes the number n as a string, and sends to the push port
+: sendresult              \ "n"
+  >r
+  push @ r> 0             \ sock item more -- sock
+  zmq:msg_send_one 
+  drop
+;
+
+\ every second tries to pull a job down from server.  If succeeds, squares it and sends to push port
+: getjob
+  pull @ zmq:getmsg[]     \ sock -- [buf]|null
+  null?                   \ [buf] f | null t
+  if
+    \ s: null
+    drop
+  else
+    ( "Result is " . b>number dup . cr 
+    \ now send it back as a product
+    dup n:*                         \ n2
+    >s                              \ s
+    sendresult                      \
+    ) a:each drop
+  then
+  "\nsleeping ..." .
+  1 sleep
+;
+
+: app:main
+  "Collecting tasks from vent...\n" .
+  init
+  ' getjob 200 times
+  deinit
+  bye ;
