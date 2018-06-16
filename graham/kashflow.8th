@@ -1,4 +1,5 @@
 \ Graham on 16-June-2018
+\ using 8th 18.04 but needs 18.05
 
 needs net/zmq   \ should check using zmq:zmq . to see if the library loads
 needs net/soap
