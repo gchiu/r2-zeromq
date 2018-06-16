@@ -1,0 +1,176 @@
+\ Graham on 16-June-2018
+
+needs net/zmq   \ should check using zmq:zmq . to see if the library loads
+needs net/soap
+
+\ holds the 0MQ ports and context
+var ctx
+var pull
+var push
+
+quote |
+    \ this is the JSON we want to create for the SOAP call
+    {
+      "url" : "https://securedwebapp.com/api/service.asmx",
+      "action" : "KashFlow/GetCustomer",
+      "api" :
+      {
+        "api" : "GetCustomer",
+        "ns"  : "KashFlow"
+      },
+      "params" : 
+      {
+        "UserName" : "myusername", 
+        "Password" : "mypassword",
+        "CustomerCode" : "2011"
+      } 
+    }
+|
+
+\ scaled back template of the above (https for this site doesn't work using 18.04 at present so using http as placefiller)
+{
+  "url" : "http://securedwebapp.com/api/service.asmx",
+  "action" : "KashFlow/GetCustomer",
+  "api" : "",
+  "params" : ""
+} var, default-json
+
+\ updates second object from first object's common keys (unless key has value)
+: update-map            \ o1 o2 -- o1 o2updated
+  dup >r
+  ( 
+    \ o1 key value
+    null?             \ o1 key value f   | r: o2
+    if                \ o1 key value 
+      drop            \ o1 key
+      dup >r          \ o1 key | r: o2 key
+      m:@             \ o1 value
+      r>              \ o1 value key
+      r>              \ o1 value key o2 
+      -rot            \ o1 o2 value key
+      swap            \ o1 o2 key value
+      m:!             \ o1 o2
+      >r              \ o1
+    else
+      2drop            \ drops the unwanted key value
+    then
+  ) m:each drop r>
+;
+
+\ with a map and key on TOS, and the main map on the RS, update the main map and return it to RS
+: update-soap-map                             \ o1 map key | dj-new
+  r>                                          \ o1 map key dj-new
+  -rot swap                                   \ o1 dj-new key map
+  m:!                                         \ o1 dj-new
+  >r                                          \ o1 | r: dj-new
+;
+
+\  params -- params api-map
+: prepare-api        
+  \ prepare the api field
+  { 
+    "api" : null ,
+    "ns"  : "Kashflow"
+  } const
+  update-map                                  \ o1 o2
+;
+
+: prepare-params                              \ o1 | r: dj-new
+  {
+    "UserName" : null, 
+    "Password" : null,
+    "CustomerCode" : null
+  } const                                     \ o1 o3 | r: dj-new
+  update-map                                  \ o1 o3updated | r: dj-new
+;
+
+\ now set the soap action on TOS
+: prepare-soapaction                        \ o1 | r: dj-new
+  "api" m:@                                 \ o1 "GetCustomer" | r: dj-new
+  "KashFlow/" swap s:+                      \ o1 "KashFlow/GetCustomer"
+;
+
+\ o1={"UserName":"myusername","Password":"mypassword","CustomerCode":"210","api":"GetCustomer"} 
+\ o1 -- dj-new
+: prepare-call    
+  default-json @ const >r                     \ o1 | r: dj-new
+
+  prepare-api                                 \ o1 api-map | r: dj-new
+  "api"                                       \ o1 api-map "api" | r: dj-new
+  update-soap-map                             \ o1 | r: dj-new
+
+  prepare-params
+  "params"
+  update-soap-map                             \ o1 | r: dj-new
+
+  prepare-soapaction                          \ o1 "KashFlow/api" | r: dj-new
+  "action"                                    \ o1 "KashFlow/api" "action" | r: dj-new
+  update-soap-map                             \ o1 | r: dj-new
+
+  drop r>                                     \ dj-new
+;
+
+: init
+  "initializing\n" .
+  zmq:ctx-new  ctx !
+  ctx @ zmq:PULL zmq:socket pull !
+  "connecting to vent ...\n" .       
+  pull @ "tcp://localhost:5557" zmq:connect not if else "can't connect to vent so quitting" throw then
+
+  ctx @ zmq:PUSH zmq:socket push !
+  "connecting to sink ...\n" .       
+  push @ "tcp://localhost:5558" zmq:connect not if else "can't connect to sink so quitting" throw then 
+;
+
+: deinit
+ pull @ zmq:close drop
+ push @ zmq:close drop
+ ctx @ zmq:ctx-destroy ;
+
+\ takes the string, and sends to the push port
+: sendresult              \ "n"
+  >r
+  push @ r> 0             \ sock item more -- sock
+  zmq:msg_send_one 
+  drop
+;
+
+\ makes api call, and then sends result back to 0MQ
+: make-api-call         \ map -
+    "Entering task " .
+    SOAP:call                                       \ soap-map -- flag post-map result-map
+    nip nip                                             \ should check these for failure
+    G:>json                                         \ s:json-result
+    "Length of string from soapcall is : " . s:len . cr
+    \ "Value returning is :" . dup . cr
+    sendresult                                      \ --
+    "Sent a result back" . cr
+;
+
+\ every second tries to pull a job down from server.  If succeeds, call SOAP API and send response back to 0MQ
+: getjob
+  pull @ zmq:getmsg[]     \ sock -- [buf]|null
+  null?                   \ [buf] f | null t
+  if
+    \ s: null
+    drop
+  else
+    ( >s                                              \ each:array
+      json>                                           \ map
+      prepare-call                                    \ map-for-soap-api-call
+      \ 1 ' make-api-call t:task-n                 \ starts new task with the map, and drops the task identifier
+      make-api-call
+    ) a:each drop
+  then
+  "\nsleeping ..." .
+  1 sleep
+  "\stack after sleep " . .s cr
+;
+
+: app:main
+  "Collecting tasks from vent...\n" .
+  init
+  ' getjob 200 times
+  deinit
+  bye ;
+
