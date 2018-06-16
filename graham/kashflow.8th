@@ -25,9 +25,9 @@ quote |
         "CustomerCode" : "2011"
       } 
     }
-|
+| drop
 
-\ scaled back template of the above (https for this site doesn't work using 18.04 at present so using http as placefiller)
+\ scaled back template of the above
 {
   "url" : "http://securedwebapp.com/api/service.asmx",
   "action" : "KashFlow/GetCustomer",
@@ -137,9 +137,9 @@ quote |
 
 \ makes api call, and then sends result back to 0MQ
 : make-api-call         \ map -
-    "Entering task " .
+    "Entering task " . .s cr
     SOAP:call                                       \ soap-map -- flag post-map result-map
-    nip nip                                             \ should check these for failure
+    nip                                             \ removing the altered map. should check these for failure
     G:>json                                         \ s:json-result
     "Length of string from soapcall is : " . s:len . cr
     \ "Value returning is :" . dup . cr
@@ -158,8 +158,10 @@ quote |
     ( >s                                              \ each:array
       json>                                           \ map
       prepare-call                                    \ map-for-soap-api-call
-      \ 1 ' make-api-call t:task-n                 \ starts new task with the map, and drops the task identifier
-      make-api-call
+      "stack before creating task: " . .s cr
+      1 ' make-api-call t:task-n drop                 \ starts new task with the map, and drops the task identifier
+      drop                                            \ where does this 0 come from? drop it.
+      \ make-api-call
     ) a:each drop
   then
   "\nsleeping ..." .
