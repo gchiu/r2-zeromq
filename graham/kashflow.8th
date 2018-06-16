@@ -155,7 +155,7 @@ quote |
     \ s: null
     drop
   else
-    ( >s                                              \ each:array
+    ( >s                                              \ each:buffer
       json>                                           \ map
       prepare-call                                    \ map-for-soap-api-call
       "stack before creating task: " . .s cr
