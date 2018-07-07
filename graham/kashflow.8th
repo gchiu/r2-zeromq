@@ -1,5 +1,5 @@
-\ Graham on 16-June-2018
-\ using 8th 18.04 but needs 18.05
+-- Graham on 16-June-2018, working 8-July-2018
+-- Needs 8th 18.05 minimum
 
 needs net/zmq   \ should check using zmq:zmq . to see if the library loads
 needs net/soap
@@ -12,7 +12,7 @@ var push
 quote |
     \ this is the JSON we want to create for the SOAP call
     {
-      "url" : "https://securedwebapp.com/api/service.asmx",
+      "url" : "http://securedwebapp.com/api/service.asmx",
       "action" : "KashFlow/GetCustomer",
       "api" :
       {
@@ -30,7 +30,7 @@ quote |
 
 \ scaled back template of the above
 {
-  "url" : "http://securedwebapp.com/api/service.asmx",
+  "url" : "https://securedwebapp.com/api/service.asmx",
   "action" : "KashFlow/GetCustomer",
   "api" : "",
   "params" : ""
@@ -71,7 +71,7 @@ quote |
   \ prepare the api field
   { 
     "api" : null ,
-    "ns"  : "Kashflow"
+    "ns"  : "KashFlow"
   } const
   update-map                                  \ o1 o2
 ;
@@ -136,10 +136,20 @@ quote |
   drop
 ;
 
-\ makes api call, and then sends result back to 0MQ
+\ sets the tlsver in the map supplied to net:post.  Use this instead of SOAP:call
+: tls-call \ object w information tlsver
+  >r
+  SOAP:add-headers
+  SOAP:create-params
+  "tlsver" 
+  r> m:! 
+  net:post 
+  if >s xml:parse else net:err>s null then ;
+
+\ makes api call, and then sends result back to 0MQ. The service uses an old version of tls so we need to set to this version 11, instead of 12 which is default
 : make-api-call         \ map -
     "Entering task " . .s cr
-    SOAP:call                                       \ soap-map -- flag post-map result-map
+    11 tls-call                                \ 11 soap-map -- flag post-map result-map (sets to tlsver 11)
     nip                                             \ removing the altered map. should check these for failure
     G:>json                                         \ s:json-result
     "Length of string from soapcall is : " . s:len . cr
