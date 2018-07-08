@@ -1,4 +1,4 @@
--- Graham on 16-June-2018, working 8-July-2018
+-- Graham on 16-June-2018
 -- Needs 8th 18.05 minimum
 
 needs net/zmq   \ should check using zmq:zmq . to see if the library loads
@@ -31,9 +31,9 @@ quote |
 \ scaled back template of the above
 {
   "url" : "https://securedwebapp.com/api/service.asmx",
-  "action" : "KashFlow/GetCustomer",
-  "api" : "",
-  "params" : ""
+  "action" : null,
+  "api" : null,
+  "params" : null
 } var, default-json
 
 \ updates second object from first object's common keys (unless key has value)
@@ -183,7 +183,6 @@ quote |
 : app:main
   "Collecting tasks from vent...\n" .
   init
-  ' getjob 200 times
+  ' getjob 1000 times
   deinit
   bye ;
-
